@@ -5,9 +5,8 @@ import pandas as pd
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 GOLDENS_DIR = PROJECT_DIR / "goldens"
 INPUT_FILE = GOLDENS_DIR / "qna_data_clean.csv"
-OUTPUT_FILE = GOLDENS_DIR / "retriever_golden.csv"
-
-SAMPLE_SIZE = 30
+OUTPUT_FILE = GOLDENS_DIR / "retriever_golden_20.csv"
+SAMPLE_SIZE = 20
 SEED = 42  # same seed -> same 30 questions every time
 
 qna = pd.read_csv(INPUT_FILE, encoding="utf-8-sig")
