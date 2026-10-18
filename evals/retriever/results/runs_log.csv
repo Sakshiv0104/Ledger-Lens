@@ -1,0 +1,11 @@
+﻿version,change_note,experiment_id,embedding_model,loader,chunk_size,chunk_overlap,add_header,k,metadata_filter,hybrid,rerank,fetch_k,judge_model,contextual_recall,contextual_precision,source_hit,mmr
+v1-baseline,"Baseline: bge-small, chunk 1000/150, Chroma L2, k=5",d9e34e01-208b-4acc-8598-6dba540e2df7,BAAI/bge-small-en-v1.5,pypdf,1000,150,False,5,False,False,False,20,gpt-oss-120b,0.328,0.311,0.982,
+v2-header,Prepend company/report/page header to every chunk,2b4937de-5a8b-4798-9b50-16c473e804ea,BAAI/bge-small-en-v1.5,pypdf,1000,150,True,5,False,False,False,20,gpt-oss-120b,0.327,0.449,0.868,
+v3-tables,"Table-aware parsing: tables as markdown, kept whole (header row repeated)",0338b664-5edc-4496-9d2c-899a8c328b82,BAAI/bge-small-en-v1.5,pdfplumber,1000,150,True,5,False,False,False,20,gpt-oss-120b,0.297,0.412,0.969,
+v4-filter,Metadata filter: search only the company/quarter named in the question,55ae4d4a-d3ff-4ff5-a3a3-7b7099cfa442,BAAI/bge-small-en-v1.5,pdfplumber,1000,150,True,5,True,False,False,20,gpt-oss-120b,0.416,0.531,0.969,
+v5-rerank,Cross-encoder reranker: 20 candidates -> best 5,3cf9b735-a2d9-4bf6-9476-d76b5cf0f6d6,BAAI/bge-small-en-v1.5,pdfplumber,1000,150,True,5,True,False,True,20,gpt-oss-120b,0.267,0.447,0.974,
+v6-mmr,v4 + MMR: 20 candidates -> 5 relevant but diverse chunks,58b26e9a-c4ff-425a-a789-50786c663237,BAAI/bge-small-en-v1.5,pdfplumber,1000,150,True,5,True,False,False,20,gpt-oss-120b,0.363,0.485,0.886,True
+v7-k8,v4 + k 5 -> 8 (more room for multi-chunk/multi-doc answers),5928acca-9f9f-478b-ac8c-993b92dad85c,BAAI/bge-small-en-v1.5,pdfplumber,1000,150,True,8,True,False,False,20,gpt-oss-120b,0.5,0.453,0.982,False
+v8-hybrid,"v4 + hybrid search: BM25 keywords + dense, fused (RRF)",6f185a7e-1652-41f9-b5f6-d64f5d6c479e,BAAI/bge-small-en-v1.5,pdfplumber,1000,150,True,5,True,True,False,20,gpt-oss-120b,0.35,0.264,0.886,False
+v9-chunk1500,v4 + bigger chunks: 1000/150 -> 1500/200 (more context per chunk),93936cad-b508-4511-bbfb-fe5831d8251c,BAAI/bge-small-en-v1.5,pdfplumber,1500,200,True,5,True,False,False,20,gpt-oss-120b,0.331,0.449,0.886,False
+v10-chunk500,v4 + smaller chunks: 1000/150 -> 500/100 (more focused chunks),32e57e80-cc10-4333-8ee8-ef145a7cdf78,BAAI/bge-small-en-v1.5,pdfplumber,500,100,True,5,True,False,False,20,gpt-oss-120b,0.275,0.475,0.89,False

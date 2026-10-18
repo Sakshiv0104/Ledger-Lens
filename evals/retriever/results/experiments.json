@@ -1,0 +1,12 @@
+{
+  "v1-baseline": "d9e34e01-208b-4acc-8598-6dba540e2df7",
+  "v2-header": "2b4937de-5a8b-4798-9b50-16c473e804ea",
+  "v3-tables": "0338b664-5edc-4496-9d2c-899a8c328b82",
+  "v4-filter": "55ae4d4a-d3ff-4ff5-a3a3-7b7099cfa442",
+  "v5-rerank": "3cf9b735-a2d9-4bf6-9476-d76b5cf0f6d6",
+  "v6-mmr": "58b26e9a-c4ff-425a-a789-50786c663237",
+  "v7-k8": "5928acca-9f9f-478b-ac8c-993b92dad85c",
+  "v8-hybrid": "6f185a7e-1652-41f9-b5f6-d64f5d6c479e",
+  "v9-chunk1500": "93936cad-b508-4511-bbfb-fe5831d8251c",
+  "v10-chunk500": "32e57e80-cc10-4333-8ee8-ef145a7cdf78"
+}
