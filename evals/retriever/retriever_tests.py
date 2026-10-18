@@ -21,13 +21,13 @@ from langchain_core.documents import Document
 from langchain_chroma import Chroma
 from langsmith import traceable
 from data_processing import (
-    DB_DIR, DOCS_DIR, EMBEDDING_MODEL, CHUNK_SIZE, CHUNK_OVERLAP,
-    load_reports, chunk_reports, get_embeddings,
+    EMBEDDING_MODEL, CHUNK_SIZE, CHUNK_OVERLAP,
+    load_reports, chunk_reports, load_and_chunk_with_tables, add_header, get_embeddings,
 )
+from retriever import detect_filter
 
 STORES_DIR = PROJECT_DIR / "chroma_stores"      # one vector store per ingestion setup
 RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-COMPANIES = {"AAPL": "Apple", "AMZN": "Amazon", "INTC": "Intel", "MSFT": "Microsoft", "NVDA": "NVIDIA"}
 
 
 # =====================================================================
@@ -84,88 +84,8 @@ TESTS_BY_VERSION = {t["version"]: t for t in TESTS}
 
 # =====================================================================
 # 2. INGESTION: load -> chunk -> (header) -> vector store
+#    (the loading/chunking/header code itself lives in retriever/data_processing.py)
 # =====================================================================
-def table_to_markdown(rows):
-    rows = [[(c or "").replace("\n", " ").strip() for c in row] for row in rows]
-    rows = [["" if c == "$" else c for c in r] for r in rows]          # drop lone "$" cells
-    rows = [r for r in rows if any(r)]
-    if len(rows) < 2:
-        return ""
-    width = max(len(r) for r in rows)
-    rows = [r + [""] * (width - len(r)) for r in rows]
-    keep = [i for i in range(width) if any(r[i] for r in rows)]       # drop empty columns
-    rows = [[r[i] for i in keep] for r in rows]
-    width = len(keep)
-    lines = ["| " + " | ".join(rows[0]) + " |", "|" + " --- |" * width]
-    lines += ["| " + " | ".join(r) + " |" for r in rows[1:]]
-    return "\n".join(lines)
-
-
-def split_table(markdown, max_chars, caption=""):
-    """Split a long table by rows, repeating the caption + header row in every piece."""
-    lines = markdown.split("\n")
-    header, rows = ([caption] if caption else []) + lines[:2], lines[2:]
-    pieces, current = [], []
-    for row in rows:
-        if current and len("\n".join(header + current + [row])) > max_chars:
-            pieces.append("\n".join(header + current))
-            current = []
-        current.append(row)
-    if current:
-        pieces.append("\n".join(header + current))
-    return pieces
-
-
-def load_with_tables(chunk_size, chunk_overlap):
-    """pdfplumber: normal text chunked as usual, every table kept whole as markdown."""
-    import pdfplumber
-
-    text_pages, table_chunks = [], []
-    for pdf_path in sorted(DOCS_DIR.glob("*.pdf")):
-        year, quarter, company = pdf_path.stem.split()
-        with pdfplumber.open(pdf_path) as pdf:
-            for page_number, page in enumerate(pdf.pages, start=1):
-                meta = {"source": pdf_path.name, "company": company, "year": year,
-                        "quarter": quarter, "page": page_number}
-                tables = page.find_tables()
-
-                # text outside the tables
-                text_page = page
-                for t in tables:
-                    try:
-                        text_page = text_page.outside_bbox(t.bbox)
-                    except ValueError:
-                        pass
-                text = text_page.extract_text() or ""
-                if text.strip():
-                    text_pages.append(Document(page_content=text, metadata={**meta, "kind": "text"}))
-
-                # each table as markdown, never cut in the middle of a row.
-                # The lines just above a table usually hold its column headers
-                # (e.g. "Three Months Ended July 1, 2023 June 25, 2022") -> keep them as a caption.
-                for t in tables:
-                    md = table_to_markdown(t.extract())
-                    if not md:
-                        continue
-                    top = t.bbox[1]
-                    try:
-                        caption = page.crop((0, max(0, top - 45), page.width, top)).extract_text() or ""
-                    except ValueError:
-                        caption = ""
-                    caption = " ".join(caption.split())
-                    for piece in split_table(md, max_chars=chunk_size * 2, caption=caption):
-                        table_chunks.append(Document(page_content=piece, metadata={**meta, "kind": "table"}))
-
-    return chunk_reports(text_pages, chunk_size, chunk_overlap) + table_chunks
-
-
-def add_header(chunk):
-    m = chunk.metadata
-    header = (f"Company: {COMPANIES.get(m['company'], m['company'])} ({m['company']}) | "
-              f"Report: {m['year']} {m['quarter']} 10-Q | Page {m['page']}\n")
-    return Document(page_content=header + chunk.page_content, metadata=m)
-
-
 def embeddings_for(config):
     if config["embedding_model"] == EMBEDDING_MODEL:
         return get_embeddings()
@@ -175,10 +95,6 @@ def embeddings_for(config):
 
 def store_dir_for(config):
     default_embedding = config["embedding_model"] == EMBEDDING_MODEL
-    is_baseline = (config["loader"] == "pypdf" and not config["add_header"] and default_embedding
-                   and config["chunk_size"] == CHUNK_SIZE and config["chunk_overlap"] == CHUNK_OVERLAP)
-    if is_baseline:
-        return DB_DIR                                   # reuse the store we already built
     name = (f"{config['loader']}_c{config['chunk_size']}_o{config['chunk_overlap']}"
             f"_{'hdr' if config['add_header'] else 'nohdr'}")
     if not default_embedding:
@@ -194,7 +110,7 @@ def load_or_build_store(config):
 
     print(f"Building vector store: {path.name} (one time, a few minutes)...")
     if config["loader"] == "pdfplumber":
-        chunks = load_with_tables(config["chunk_size"], config["chunk_overlap"])
+        chunks = load_and_chunk_with_tables(config["chunk_size"], config["chunk_overlap"])
     else:
         chunks = chunk_reports(load_reports(), config["chunk_size"], config["chunk_overlap"])
     if config["add_header"]:
@@ -204,29 +120,8 @@ def load_or_build_store(config):
 
 
 # =====================================================================
-# 3. RETRIEVAL HELPERS: metadata filter, BM25, fusion, reranker
+# 3. RETRIEVAL HELPERS: BM25, fusion, reranker (metadata filter comes from retriever.py)
 # =====================================================================
-def detect_filter(question):
-    """Which company / quarter does the question name? -> Chroma filter (or None)."""
-    found = [t for t, name in COMPANIES.items()
-             if re.search(rf"\b({name}|{t})\b", question, re.IGNORECASE)]
-    conditions = []
-    if len(found) == 1:
-        conditions.append({"company": found[0]})
-    elif len(found) > 1:
-        conditions.append({"company": {"$in": found}})
-
-    m = re.search(r"\bQ([1-4])\s*(?:of\s*)?(20\d\d)\b|\b(20\d\d)\s*Q([1-4])\b", question, re.IGNORECASE)
-    if m:
-        quarter = m.group(1) or m.group(4)
-        year = m.group(2) or m.group(3)
-        conditions += [{"year": year}, {"quarter": f"Q{quarter}"}]
-
-    if not conditions:
-        return None
-    return conditions[0] if len(conditions) == 1 else {"$and": conditions}
-
-
 def matches(meta, flt):
     if flt is None:
         return True
