@@ -1,12 +1,33 @@
-langchain-openai
-langchain-chroma
-langchain-text-splitters
+# LangChain + vector store
 langchain-core
+langchain-text-splitters
+langchain-chroma
+langchain-huggingface
 chromadb
-openai
+
+# Embeddings + reranker (local, free)
 sentence-transformers
+
+# PDF loading
+pypdf
+pdfplumber
+
+# Hybrid search
+rank_bm25
+
+# Data handling
+pandas
+datasets
+
+# Evaluation + tracking
 deepeval
+langsmith
 pytest
+
+# Judge LLM (Groq uses the OpenAI-compatible client)
+openai
+
+# Config
 python-dotenv
 datasets
 pypdf
